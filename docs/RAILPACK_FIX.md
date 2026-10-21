@@ -6,17 +6,39 @@ The deployment log for `shopwizeonline_3899018` confirms that Railpack 0.35.0 re
 
 `package-lock.json` is already committed, valid JSON, lockfile version 3, and consistent with `package.json`. The earlier custom `steps.install.commands` array replaced Railpack's generated commands, including the commands that copy the package files. The generated install step contained only `npm ci`, with no application files copied into it. This was a configuration error introduced by the previous repair.
 
-The corrected install step explicitly copies both files before installing:
+The corrected install step retains Railpack's standard PATH, Corepack preparation and cache-directory setup, and explicitly copies both package files before installing. Corepack preparation creates `/opt/corepack`, which the generated runtime image copies from the build step:
 
 ```json
-"commands": [
-  { "src": "package.json", "dest": "package.json" },
-  { "src": "package-lock.json", "dest": "package-lock.json" },
-  "npm ci --include=dev --include=optional"
-]
+{
+  "commands": [
+    {
+      "path": "/app/node_modules/.bin"
+    },
+    {
+      "dest": "package.json",
+      "src": "package.json"
+    },
+    {
+      "cmd": "sh -c 'npm i -g corepack@latest && corepack enable && corepack prepare --activate'",
+      "customName": "npm i -g corepack@latest && corepack enable && corepack prepare --activate"
+    },
+    {
+      "cmd": "mkdir -p /app/node_modules/.cache"
+    },
+    {
+      "dest": "package-lock.json",
+      "src": "package-lock.json"
+    },
+    {
+      "dest": "package.json",
+      "src": "package.json"
+    },
+    "npm ci --include=dev --include=optional"
+  ]
+}
 ```
 
-These are Railpack [copy commands](https://railpack.com/config/file/#copy-command), executed before npm. The install inputs still retain the Node toolchain. The application build continues to copy the source and run `npm run build`.
+These are Railpack [copy commands](https://railpack.com/config/file/#copy-command), executed before npm. The install inputs retain the Node toolchain; the preparation commands also preserve the package-manager files expected by the runtime copy inputs. The application build continues to copy the source and run `npm run build`.
 
 Commit and push the updated `railpack.json`, then redeploy that commit in SmarterASP.NET. Keep **Build Command** as `npm run build` and **Start Command** as `npm start`. The lockfile does not need regeneration for this error. Hosted database migrations are already applied; this build failure does not require another database change.
 
@@ -24,6 +46,7 @@ The trailing `unrecognized image format` is downstream of the failed container b
 
 ### Validation of the package-file copy fix
 
+- Compared the final install setup with Railpack's unmodified provider plan: every PATH, Corepack, cache and file-copy setup command is preserved; the dependency install command is changed to `npm ci`. The default runtime copy inputs are all retained.
 - Generated before/after plans with Railpack **0.35.0**, the version in the hosting log, from a clean committed-source snapshot. The original plan had no package-file copies; the corrected plan copies both files before npm and retains the build inputs and start command.
 - Ran `npm ci --include=dev --include=optional` in a fresh directory containing only those copied package files: **389 packages installed successfully**.
 - Added the clean source to that installation: the production TypeScript/Vite build and **all 16 unit tests passed**.

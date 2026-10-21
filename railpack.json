@@ -5,12 +5,26 @@
     "install": {
       "commands": [
         {
-          "src": "package.json",
-          "dest": "package.json"
+          "path": "/app/node_modules/.bin"
         },
         {
-          "src": "package-lock.json",
-          "dest": "package-lock.json"
+          "dest": "package.json",
+          "src": "package.json"
+        },
+        {
+          "cmd": "sh -c 'npm i -g corepack@latest && corepack enable && corepack prepare --activate'",
+          "customName": "npm i -g corepack@latest && corepack enable && corepack prepare --activate"
+        },
+        {
+          "cmd": "mkdir -p /app/node_modules/.cache"
+        },
+        {
+          "dest": "package-lock.json",
+          "src": "package-lock.json"
+        },
+        {
+          "dest": "package.json",
+          "src": "package.json"
         },
         "npm ci --include=dev --include=optional"
       ]
