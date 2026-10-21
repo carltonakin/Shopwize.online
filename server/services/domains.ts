@@ -1,0 +1,15 @@
+﻿import {resolveTxt,resolveCname,lookup} from 'node:dns/promises';
+import {connect} from 'node:tls';
+import {BlockList} from 'node:net';
+import {query} from '../db.js';
+import {assert} from '../util.js';
+const privateRanges=new BlockList();for(const [network,prefix] of [['0.0.0.0',8],['10.0.0.0',8],['127.0.0.0',8],['169.254.0.0',16],['172.16.0.0',12],['192.168.0.0',16],['100.64.0.0',10],['224.0.0.0',4]] as [string,number][])privateRanges.addSubnet(network,prefix,'ipv4');privateRanges.addSubnet('::',128,'ipv6');privateRanges.addSubnet('::1',128,'ipv6');privateRanges.addSubnet('fc00::',7,'ipv6');privateRanges.addSubnet('fe80::',10,'ipv6');privateRanges.addSubnet('::ffff:0:0',96,'ipv6');
+export async function checkDomain(domainId:string){
+ const d=(await query("SELECT * FROM StoreDomains WHERE id=TRY_CONVERT(uniqueidentifier,@id) AND state<>'detached'",{id:domainId}))[0];assert(d,'Domain not found.',404);const edge=process.env.SHOPWIZE_EDGE_CNAME?.toLowerCase().replace(/\.$/,'');assert(edge,'Configure the public TLS edge first.',503);
+ try{
+  const [txt,cnames,addresses]=await Promise.all([resolveTxt(`_shopwize.${d.hostname}`),resolveCname(d.hostname),lookup(edge,{all:true})]);assert(txt.some(t=>t.join('')===d.challenge),'Ownership challenge is missing.');assert(cnames.some(c=>c.toLowerCase().replace(/\.$/,'')===edge),'DNS no longer points to the configured edge.');const address=addresses.find(a=>!privateRanges.check(a.address,a.family===6?'ipv6':'ipv4'));assert(address,'The TLS edge must resolve to a public address.');
+  const expires=await new Promise<Date>((resolve,reject)=>{const socket=connect({host:address.address,port:443,servername:d.hostname,rejectUnauthorized:true,timeout:10000},()=>{const cert=socket.getPeerCertificate();socket.end();const expiry=new Date(cert.valid_to);if(!socket.authorized||!Number.isFinite(expiry.getTime())||expiry.getTime()<Date.now()+7*86400000)reject(new Error('Certificate is invalid or expires within seven days.'));else resolve(expiry);});socket.on('timeout',()=>socket.destroy(new Error('TLS edge did not respond.')));socket.on('error',reject);});
+  await query("UPDATE StoreDomains SET state='active',verifiedAt=SYSUTCDATETIME(),tlsVerifiedAt=SYSUTCDATETIME(),certificateExpiresAt=@expires,checkedAt=SYSUTCDATETIME(),lastError=NULL WHERE id=@id AND challenge=@challenge AND state<>'detached'",{id:d.id,expires,challenge:d.challenge});return {state:'active',certificateExpiresAt:expires};
+ }catch(error){await query("UPDATE StoreDomains SET state=CASE WHEN state='active' THEN 'needs_attention' ELSE state END,checkedAt=SYSUTCDATETIME(),lastError='DNS ownership, routing, or trusted TLS verification failed' WHERE id=@id AND challenge=@challenge",{id:d.id,challenge:d.challenge});throw error;}
+}
+export async function monitorDomains(){const rows=await query("SELECT TOP 10 id FROM StoreDomains WHERE state IN ('active','needs_attention') AND (checkedAt IS NULL OR checkedAt<DATEADD(hour,-6,SYSUTCDATETIME()))");for(const d of rows){try{await checkDomain(d.id);}catch{/* Status and reason are retained for the host dashboard. */}}}

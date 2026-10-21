@@ -1,0 +1,10 @@
+﻿import {Router} from 'express';
+import {z} from 'zod';
+import {query,transaction,parse} from '../db.js';
+import {vendorScope} from '../auth.js';
+import {assert} from '../util.js';
+export const drafts=Router();
+const keySchema=z.string().regex(/^(new|[a-f0-9-]{36})$/);
+drafts.get('/vendor/drafts/:key',async(req,res)=>{const v=await vendorScope(req,true),key=keySchema.parse(req.params.key);const draft=(await query('SELECT data,CONVERT(varchar(18),version,1) AS version,updatedAt FROM ProductDrafts WHERE vendorId=@vendor AND draftKey=@key',{vendor:v.id,key}))[0];res.json(draft?{...draft,data:parse(draft.data)}:{data:null,version:null});});
+drafts.put('/vendor/drafts/:key',async(req,res)=>{const v=await vendorScope(req,true),key=keySchema.parse(req.params.key);const p=z.object({version:z.string().nullable(),data:z.record(z.string(),z.unknown())}).parse(req.body);assert(JSON.stringify(p.data).length<=150000,'Draft is too large.');const result=await transaction(async tx=>{const old=(await query('SELECT CONVERT(varchar(18),version,1) AS version FROM ProductDrafts WITH(UPDLOCK,HOLDLOCK) WHERE vendorId=@vendor AND draftKey=@key',{vendor:v.id,key},tx))[0];assert((old?.version||null)===p.version,'This draft changed in another session. Reload to avoid overwriting it.',409);if(old)await query('UPDATE ProductDrafts SET data=@data,userId=@user,updatedAt=SYSUTCDATETIME() WHERE vendorId=@vendor AND draftKey=@key',{vendor:v.id,key,user:req.user!.id,data:p.data},tx);else await query('INSERT INTO ProductDrafts(vendorId,draftKey,userId,data) VALUES(@vendor,@key,@user,@data)',{vendor:v.id,key,user:req.user!.id,data:p.data},tx);return (await query('SELECT CONVERT(varchar(18),version,1) AS version FROM ProductDrafts WHERE vendorId=@vendor AND draftKey=@key',{vendor:v.id,key},tx))[0];});res.json(result);});
+drafts.delete('/vendor/drafts/:key',async(req,res)=>{const v=await vendorScope(req,true),key=keySchema.parse(req.params.key);await query('DELETE FROM ProductDrafts WHERE vendorId=@vendor AND draftKey=@key AND CONVERT(varchar(18),version,1)=@version',{vendor:v.id,key,version:z.string().parse(req.body.version)});res.json({ok:true});});

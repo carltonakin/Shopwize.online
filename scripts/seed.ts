@@ -1,0 +1,35 @@
+import bcrypt from 'bcryptjs';
+import { query,transaction,closeDb } from '../server/db.js';
+import { id,token } from '../server/util.js';
+import { mkdir,writeFile } from 'node:fs/promises';
+if(process.env.NODE_ENV==='production')throw new Error('Demo seed is forbidden in production.');
+const photo=(id:string,w=900)=>`https://images.unsplash.com/${id}?auto=format&fit=crop&w=${w}&q=85`;
+const categories=[['home','Home & living','photo-1600210492486-724fe5c67fb0'],['fashion','Fashion','photo-1483985988355-763728e1935b'],['accessories','Accessories','photo-1548036328-c9fa89d128fa'],['beauty','Beauty & wellness','photo-1608571423902-eed4a5ad8108'],['electronics','Electronics','photo-1505740420928-5e560c06d30e'],['outdoors','Outdoors','photo-1464822759023-fed622ff2c3b']];
+const credentials:any[]=[];
+await transaction(async tx=>{
+ for(const [slug,name,image] of categories)await query('IF NOT EXISTS(SELECT 1 FROM Categories WHERE slug=@slug) INSERT INTO Categories(slug,name,image) VALUES(@slug,@name,@image)',{slug,name,image:photo(image)},tx);
+ for(const [email,name,role] of [['admin@shopwize.test','Shopwize Admin','host_admin'],['customer@shopwize.test','Alex Morgan','customer'],['studio@shopwize.test','Maya at Form & Field','vendor_owner'],['everyday@shopwize.test','Jordan at Everyday Studio','vendor_owner'],['botanica@shopwize.test','Lena at Botanica','vendor_owner']]){
+  if((await query('SELECT id FROM Users WHERE email=@email',{email},tx)).length)continue;const password=token();credentials.push({email,password});await query('INSERT INTO Users(id,email,name,role,passwordHash,verified) VALUES(@id,@email,@name,@role,@password,1)',{id:id(),email,name,role,password:await bcrypt.hash(password,12)},tx);
+ }
+ const stores=[{email:'studio@shopwize.test',name:'Form & Field',slug:'form-and-field',category:'home',description:'Thoughtful objects for everyday spaces. Small-batch ceramics, natural textures, and things made to last.',accent:'#475b42',image:photo('photo-1600210492486-724fe5c67fb0')},{email:'everyday@shopwize.test',name:'Everyday Studio',slug:'everyday-studio',category:'accessories',description:'The less-is-more essentials. Considered accessories and everyday pieces that go everywhere with you.',accent:'#a66349',image:photo('photo-1441986300917-64674bd600d8')},{email:'botanica@shopwize.test',name:'Botanica',slug:'botanica',category:'beauty',description:'A little ritual. A slower moment. Botanical care crafted with nature in mind.',accent:'#6e7651',image:photo('photo-1608571423902-eed4a5ad8108')}];
+ const vendorIds:Record<string,string>={};
+ for(const s of stores){const existing=(await query('SELECT id FROM Vendors WHERE slug=@slug',{slug:s.slug},tx))[0];if(existing){vendorIds[s.slug]=existing.id;continue;}const vid=id();vendorIds[s.slug]=vid;const owner=(await query('SELECT id FROM Users WHERE email=@email',{email:s.email},tx))[0];await query("INSERT INTO Vendors(id,ownerId,name,slug,status,trusted,paymentEligible,country,category,description,data) VALUES(@id,@owner,@name,@slug,'approved',1,1,'US',@category,@description,@data)",{...s,id:vid,owner:owner.id,data:{demo:true,shipping:{standard:'6.00',express:'14.00',freeOver:'100.00',pickup:true,countries:[]},image:s.image}},tx);await query("INSERT INTO VendorMembers(vendorId,userId,role) VALUES(@vendor,@user,'owner')",{vendor:vid,user:owner.id},tx);const theme={name:s.name,accent:s.accent,banner:s.image,about:s.description,policies:'Returns accepted within 30 days. Items should be unused and in original packaging.'};await query('INSERT INTO StoreThemes(vendorId,draft,published) VALUES(@vendor,@theme,@theme)',{vendor:vid,theme},tx);await query("INSERT INTO PolicyAcceptances(id,vendorId,userId,version) VALUES(@id,@vendor,@user,'2026-01')",{id:id(),vendor:vid,user:owner.id},tx);}
+ const products=[
+ ['form-and-field','Sculptural ceramic vase','home','38.00','48.00','photo-1578500494198-246f612d3b3d','Natural / Medium'],
+ ['everyday-studio','The everyday canvas tote','accessories','32.00','40.00','photo-1544816155-12df9643f363','Sand'],
+ ['form-and-field','Linen cushion cover','home','28.00','','photo-1584100936595-c0654b55a2e2','Oat / 45 cm'],
+ ['botanica','Botanical body oil','beauty','26.00','','photo-1608571423902-eed4a5ad8108','Cedar & citrus / 100 ml'],
+ ['everyday-studio','Studio wireless headphones','electronics','89.00','110.00','photo-1505740420928-5e560c06d30e','Warm white'],
+ ['everyday-studio','Classic leather crossbody','accessories','74.00','','photo-1548036328-c9fa89d128fa','Cognac'],
+ ['form-and-field','Slow morning stoneware mug','home','22.00','','photo-1514228742587-6b1558fcca3d','Speckled cream'],
+ ['botanica','Sunday ritual candle','beauty','34.00','42.00','photo-1603006905003-be475563bc59','Sandalwood / 220 g'],
+ ['everyday-studio','Relaxed cotton shirt','fashion','56.00','','photo-1596755094514-f87e34085b2c','White / M'],
+ ['form-and-field','Natural woven basket','home','46.00','','flagged/photo-1568051263459-4615cc08a864','Natural / Large'],
+ ['everyday-studio','Weekend trail backpack','outdoors','68.00','85.00','photo-1553062407-98eeb64c6a62','Olive'],
+ ['botanica','Daily mineral sunscreen','beauty','24.00','','photo-1556229010-6c3f2c9ca5f8','SPF 30 / 50 ml']
+ ];
+ let n=0;for(const [slug,name,category,price,regularPrice,image,label] of products){n++;const sku=`SW-DEMO-${String(n).padStart(3,'0')}`;if((await query('SELECT id FROM ProductVariants WHERE sku=@sku',{sku},tx)).length)continue;const pid=id();await query("INSERT INTO Products(id,vendorId,name,description,category,currency,status,image,data) VALUES(@id,@vendor,@name,@description,@category,'USD','published',@image,@data)",{id:pid,vendor:vendorIds[slug],name,description:`Meet your new everyday favorite. ${name} brings thoughtful design and considered details to the things you use most. Selected from our independent stores for its quality, simplicity, and lasting appeal. This is sample catalog data for the local marketplace.`,category,image:photo(image),data:{processingTime:'1–3 business days',returnPolicy:'Return unused items within 30 days of delivery.',demo:true}},tx);await query('INSERT INTO ProductVariants(id,productId,sku,label,price,regularPrice,stock) VALUES(@id,@product,@sku,@label,@price,@regularPrice,@stock)',{id:id(),product:pid,sku,label,price,regularPrice:regularPrice||null,stock:n===12?0:20},tx);}
+ if(!(await query('SELECT id FROM CommissionRules',{},tx)).length)await query('INSERT INTO CommissionRules(id,bps,version) VALUES(@id,1000,1)',{id:id()},tx);
+ await query("IF NOT EXISTS(SELECT 1 FROM Coupons WHERE code='WELCOME10') INSERT INTO Coupons(code,bps,maxUses) VALUES('WELCOME10',1000,1000)",{},tx);
+});
+await mkdir('.local',{recursive:true});if(credentials.length)await writeFile('.local/demo-credentials.json',JSON.stringify(credentials,null,2));console.log('Demo catalog seeded. Use the development sign-in buttons. Random passwords are stored only in ignored .local/demo-credentials.json. No real sellers or orders were imported.');await closeDb();

@@ -1,0 +1,6 @@
+﻿import {z} from 'zod';
+import bcrypt from 'bcryptjs';
+import {query,transaction,closeDb} from '../server/db.js';
+import {id} from '../server/util.js';
+const input=z.object({email:z.email(),name:z.string().min(2).max(120),password:z.string().min(16).max(128)}).parse({email:process.env.BOOTSTRAP_ADMIN_EMAIL,name:process.env.BOOTSTRAP_ADMIN_NAME,password:process.env.BOOTSTRAP_ADMIN_PASSWORD});
+try{const passwordHash=await bcrypt.hash(input.password,12);await transaction(async tx=>{const existing=(await query('SELECT id FROM Users WHERE role=@role',{role:'host_admin'},tx))[0];if(existing)throw new Error('A host administrator already exists. Use the established account recovery procedure.');const uid=id();await query("INSERT INTO Users(id,email,passwordHash,name,role,verified) VALUES(@id,@email,@password,@name,'host_admin',1)",{id:uid,email:input.email.toLowerCase(),password:passwordHash,name:input.name},tx);await query("INSERT INTO AuditEvents(id,actorId,action,resourceId) VALUES(@id,@actor,'host.bootstrap',@resource)",{id:id(),actor:uid,resource:uid},tx);});console.log('Initial administrator created. Remove bootstrap credentials from the service environment.');}finally{await closeDb();}
