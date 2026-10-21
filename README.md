@@ -48,6 +48,10 @@ npm run build
 
 Integration tests create a fresh `ShopwizeTest_<timestamp>` SQL Server database, apply all migrations, seed fixtures, and call the actual Express API over loopback HTTP. The database is retained for inspection; no automatic drop is performed. Results are saved to `test-results/integration.json` and summarized in [docs/VALIDATION.md](docs/VALIDATION.md).
 
+## SmarterASP.NET hosting
+
+The online hosting provider is **SmarterASP.NET**. The supplied deployment log uses its GitHub deployment with a Linux/Railpack build. Use the SQL-login settings in [.env.production.example](.env.production.example). The native trusted-auth driver is optional; Linux hosting uses the default `mssql` TCP driver with `SQL_TRUSTED_CONNECTION=false`. See the [Railpack error diagnosis and redeployment steps](docs/RAILPACK_FIX.md). Do not copy the Windows development `.env` into the hosted container.
+
 ## Delivery notes
 
 - [Feature status and known limits](docs/FEATURE_STATUS.md)

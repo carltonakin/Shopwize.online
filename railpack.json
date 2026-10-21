@@ -1,0 +1,20 @@
+{
+  "$schema": "https://schema.railpack.com",
+  "provider": "node",
+  "steps": {
+    "install": {
+      "commands": ["npm ci --include=dev --include=optional"]
+    }
+  },
+  "deploy": {
+    "startCommand": "npm start",
+    "variables": {
+      "NODE_ENV": "production",
+      "HOST": "0.0.0.0",
+      "SQL_TRUSTED_CONNECTION": "false",
+      "SQL_CREATE_DATABASE": "false",
+      "DEMO_AUTH_ENABLED": "false",
+      "MOCK_PAYMENTS_ENABLED": "false"
+    }
+  }
+}
