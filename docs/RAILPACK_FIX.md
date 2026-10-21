@@ -1,6 +1,35 @@
-﻿# SmarterASP.NET deployment failure: diagnosis and solution
+# SmarterASP.NET deployment failure: diagnosis and solution
 
-## What failed
+## Latest failure: package files missing from the install step
+
+The deployment log for `shopwizeonline_3899018` confirms that Railpack 0.35.0 reads `railpack.json`, selects Node 24.21.0, and runs `npm ci --include=dev --include=optional`. It then fails with `EUSAGE` because npm cannot find a usable lockfile.
+
+`package-lock.json` is already committed, valid JSON, lockfile version 3, and consistent with `package.json`. The earlier custom `steps.install.commands` array replaced Railpack's generated commands, including the commands that copy the package files. The generated install step contained only `npm ci`, with no application files copied into it. This was a configuration error introduced by the previous repair.
+
+The corrected install step explicitly copies both files before installing:
+
+```json
+"commands": [
+  { "src": "package.json", "dest": "package.json" },
+  { "src": "package-lock.json", "dest": "package-lock.json" },
+  "npm ci --include=dev --include=optional"
+]
+```
+
+These are Railpack [copy commands](https://railpack.com/config/file/#copy-command), executed before npm. The install inputs still retain the Node toolchain. The application build continues to copy the source and run `npm run build`.
+
+Commit and push the updated `railpack.json`, then redeploy that commit in SmarterASP.NET. Keep **Build Command** as `npm run build` and **Start Command** as `npm start`. The lockfile does not need regeneration for this error. Hosted database migrations are already applied; this build failure does not require another database change.
+
+The trailing `unrecognized image format` is downstream of the failed container build. A successful rebuild and public HTTPS/routing verification remain necessary before the website can be declared working.
+
+### Validation of the package-file copy fix
+
+- Generated before/after plans with Railpack **0.35.0**, the version in the hosting log, from a clean committed-source snapshot. The original plan had no package-file copies; the corrected plan copies both files before npm and retains the build inputs and start command.
+- Ran `npm ci --include=dev --include=optional` in a fresh directory containing only those copied package files: **389 packages installed successfully**.
+- Added the clean source to that installation: the production TypeScript/Vite build and **all 16 unit tests passed**.
+- These execution checks ran on Windows. The Linux container image and public host still require verification after SmarterASP.NET redeploys the fix.
+
+## Original failure: native ODBC dependency
 
 The supplied `ErrorLog.txt` shows both builds failing during **npm dependency installation**, before TypeScript or Vite could build the application:
 
@@ -44,7 +73,7 @@ A persistent worker process and durable media storage are application requiremen
 
 ## Redeploy
 
-1. Review and commit the changed source, both package files, `railpack.json`, the production template, tests and documentation. Keep the local `.env` and `.local` out of Git. These changes have not been committed or pushed by this repair task.
+1. Review and commit the changed source, both package files, `railpack.json`, the production template, tests and documentation. Keep the local `.env` and `.local` out of Git. Deployment reads committed files from GitHub; local edits alone do not affect the host.
 2. Configure the following runtime values for the SmarterASP.NET Node.js app. Use the SQL Server connection details assigned to that hosting account:
 
 | Setting | Value |
@@ -71,7 +100,7 @@ A persistent worker process and durable media storage are application requiremen
 6. Confirm the public `/api/health` returns `{ "ok": true, ... }` through the configured domain. This checks database connectivity as well as HTTP. If it fails after the build succeeds, check SQL hostname/port, firewall access, login, database permissions and certificate trust; those would be new runtime issues, not the native build failure in this log.
 7. Run `npm run worker` as a separate supervised process with the same database/provider/SMTP settings. Keep payment live flags false until provider sandbox verification is complete.
 
-No production credentials were requested or changed. No remote deployment was triggered. This Windows workspace has no usable Docker/WSL Linux runtime, so the actual hosted Linux rebuild and remote database connection still need verification after redeployment.
+The hosted SQL database has subsequently been migrated and tested using the private connection settings. No remote web deployment was triggered from this workspace. This Windows workspace has no usable Docker/WSL Linux runtime, so the actual hosted Linux image build still needs verification after redeployment.
 
 ## References
 
