@@ -52,7 +52,9 @@ Review provider dashboards alongside `PaymentAttempts`, `PaymentTransactions`, `
 
 ## Migration and backup recovery
 
-Migrations 001–005 are incremental SQL Server batches with version records and transactions. Migration 005 backfills shipping counters for prior whole-order shipments. The migration runner creates a missing database only when creation is enabled (the development default, or explicit `SQL_CREATE_DATABASE=true`). Production and `SQL_CREATE_DATABASE=false` connect directly to the existing configured database. Provider-assigned names are supported. It does not drop/reset an existing database.
+Migrations 001–005 are incremental SQL Server batches with version records and transactions. Migration 005 backfills shipping counters for prior whole-order shipments. Migration 006 adds encrypted host payment configuration and per-vendor payment preferences. Apply it before starting this version. The migration runner creates a missing database only when creation is enabled (the development default, or explicit `SQL_CREATE_DATABASE=true`). Production and `SQL_CREATE_DATABASE=false` connect directly to the existing configured database. Provider-assigned names are supported. It does not drop/reset an existing database.
+
+Preserve and securely back up `.local/payment-settings.key` (or the existing `PAYMENT_SETTINGS_KEY` secret) for the API and worker; a database-only restore cannot unlock saved payment credentials. Configure providers through Host workspace > Payments as described in [PAYMENTS.md](PAYMENTS.md).
 
 Back up SQL and media before release, verify restore in an isolated environment, and retain the corresponding source/lockfile. Prefer a forward correction over a down migration once orders exist. To roll back application code, stop API/worker writes, restore the previous application version against a compatible schema, or restore the complete pre-release backup to a separate instance and reconcile all provider events occurring since the backup. Do not restore over live financial data without that reconciliation plan. There is no destructive automatic rollback script.
 

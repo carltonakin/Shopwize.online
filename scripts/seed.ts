@@ -32,4 +32,5 @@ await transaction(async tx=>{
  if(!(await query('SELECT id FROM CommissionRules',{},tx)).length)await query('INSERT INTO CommissionRules(id,bps,version) VALUES(@id,1000,1)',{id:id()},tx);
  await query("IF NOT EXISTS(SELECT 1 FROM Coupons WHERE code='WELCOME10') INSERT INTO Coupons(code,bps,maxUses) VALUES('WELCOME10',1000,1000)",{},tx);
 });
-await mkdir('.local',{recursive:true});if(credentials.length)await writeFile('.local/demo-credentials.json',JSON.stringify(credentials,null,2));console.log('Demo catalog seeded. Use the development sign-in buttons. Random passwords are stored only in ignored .local/demo-credentials.json. No real sellers or orders were imported.');await closeDb();
+const credentialsPath=process.env.NODE_ENV==='test'?'.local/test-demo-credentials.json':'.local/demo-credentials.json';
+await mkdir('.local',{recursive:true});if(credentials.length)await writeFile(credentialsPath,JSON.stringify(credentials,null,2));console.log('Demo catalog seeded. Use the development sign-in buttons. Random passwords are stored only in ignored '+credentialsPath+'. No real sellers or orders were imported.');await closeDb();

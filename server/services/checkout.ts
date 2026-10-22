@@ -1,9 +1,11 @@
+import {paymentPolicy,paymentValue} from '../payments/runtime.js';
 import {deliveryMethods} from './shipping.js';
 import { query, transaction, parse, type Db } from '../db.js';
 import { config } from '../config.js';
 import { amount, minor, percent, allocate, resolveRule, type Rule } from '../money.js';
 import { id, token, hash, assert } from '../util.js';
 import { provider, type Capture } from '../payments/providers.js';
+import {verifyPayPalAllocation} from '../payments/allocation.js';
 export type Address={name:string;email:string;line1:string;line2?:string;city:string;region:string;postal:string;country:string};
 export type QuoteInput={shipping?:Record<string,string>;coupon?:string;address?:Address};
 export async function cartItems(cartId:string,target?:Db) {
@@ -22,7 +24,7 @@ export async function quote(cartId:string,input:QuoteInput,target?:Db){
  if(coupon?.fixedAmount)assert(coupon.currency===currency,'This reward uses a different currency.');
  const eligibleTotal=eligible.reduce((a,b)=>a+b,0n);const fixed=coupon?.fixedAmount?minor(coupon.fixedAmountValue,currency):0n;
  const discounts=coupon?allocate(coupon.fixedAmount?(fixed<eligibleTotal?fixed:eligibleTotal):percent(eligibleTotal,coupon.bps),eligible):items.map(()=>0n);
- const lines=items.map((item,index)=>{const rule=resolveRule(rules,item.vendorId,item.category);const net=prices[index]-discounts[index];const tax=percent(net,config.taxBps);const commission=percent(net,rule.bps);return {...item,vendorData:undefined,productData:undefined,subtotal:amount(prices[index],currency),discount:amount(discounts[index],currency),net:amount(net,currency),tax:amount(tax,currency),commission:amount(commission,currency),total:amount(net+tax,currency),rule,returnPolicy:parse(item.productData).returnPolicy||'Returns within 30 days of delivery. Contact the store before returning.',processingTime:parse(item.productData).processingTime||'1–3 business days'};});
+ const lines=items.map((item,index)=>{const rule=resolveRule(rules,item.vendorId,item.category);const net=prices[index]-discounts[index];const tax=percent(net,paymentPolicy().taxBps);const commission=percent(net,rule.bps);return {...item,vendorData:undefined,productData:undefined,subtotal:amount(prices[index],currency),discount:amount(discounts[index],currency),net:amount(net,currency),tax:amount(tax,currency),commission:amount(commission,currency),total:amount(net+tax,currency),rule,returnPolicy:parse(item.productData).returnPolicy||'Returns within 30 days of delivery. Contact the store before returning.',processingTime:parse(item.productData).processingTime||'1–3 business days'};});
  const groups=[...new Set(items.map(i=>i.vendorId))].map(vendorId=>{
    const original=items.find(i=>i.vendorId===vendorId)!;const vendorLines=lines.filter(l=>l.vendorId===vendorId);const settings=parse(original.vendorData).shipping||{};
    const net=vendorLines.reduce((s,l)=>s+minor(l.net,currency),0n);const tax=vendorLines.reduce((s,l)=>s+minor(l.tax,currency),0n);
@@ -32,7 +34,7 @@ export async function quote(cartId:string,input:QuoteInput,target?:Db){
    return {vendorId,vendorName:original.vendorName,slug:original.slug,lines:vendorLines,methods:methods.map(m=>({...m,price:amount(minor(m.price,currency),currency)})),method:selected,subtotal:amount(net,currency),tax:amount(tax,currency),shipping:amount(shipping,currency),commission:amount(commission,currency),vendorAmount:amount(BigInt(net)+shipping-BigInt(commission),currency),total:amount(net+tax+shipping,currency)};
  });
  const sum=(key:string)=>amount(groups.reduce((s,g)=>s+minor((g as any)[key],currency),0n),currency);
- return {currency,groups,subtotal:amount(prices.reduce((a,b)=>a+b,0n),currency),discount:amount(discounts.reduce((a,b)=>a+b,0n),currency),shipping:sum('shipping'),tax:sum('tax'),total:sum('total'),coupon:coupon?.code||null,taxConfigured:process.env.TAX_CONFIGURATION_CONFIRMED==='true'};
+ return {currency,groups,subtotal:amount(prices.reduce((a,b)=>a+b,0n),currency),discount:amount(discounts.reduce((a,b)=>a+b,0n),currency),shipping:sum('shipping'),tax:sum('tax'),total:sum('total'),coupon:coupon?.code||null,taxConfigured:paymentValue('TAX_CONFIGURATION_CONFIRMED')==='true'};
 }
 export async function createCheckout(cartId:string,userId:string|null,input:QuoteInput&{address:Address;provider:string;accessToken:string;referral?:string},key:string){
  const adapter=provider(input.provider);assert(adapter.capabilities().available,adapter.capabilities().reason,503);const settings=(await query('SELECT * FROM ProviderSettings WHERE provider=@provider',{provider:input.provider}))[0];assert(!settings||settings.enabled,'This provider is disabled for new checkouts.',503);
@@ -42,7 +44,7 @@ export async function createCheckout(cartId:string,userId:string|null,input:Quot
   if(existing){assert(existing.cartId===cartId&&existing.requestHash===requestHash,'This checkout key was already used for different details.',409);assert(existing.accessHash===hash(input.accessToken),'Invalid order access.',403);return {order:existing,attempt:(await query('SELECT * FROM PaymentAttempts WHERE orderId=@id',{id:existing.id},tx))[0]};}
   const q=await quote(cartId,input,tx);const orderId=id();if(settings){const currencies=parse<string[]>(settings.currencies,[]);assert(!currencies.length||currencies.includes(q.currency),'This provider is not enabled for the order currency.');}
   if(input.provider!=='mock'){
-   const accounts=await query('SELECT vendorId,externalId FROM ProviderAccounts WHERE provider=@provider AND chargesEnabled=1 AND payoutsEnabled=1',{provider:input.provider},tx);
+   const accounts=await query('SELECT a.vendorId,a.externalId FROM ProviderAccounts a LEFT JOIN VendorPaymentPreferences p ON p.vendorId=a.vendorId AND p.provider=a.provider WHERE a.provider=@provider AND a.chargesEnabled=1 AND a.payoutsEnabled=1 AND COALESCE(p.enabled,1)=1',{provider:input.provider},tx);
    for(const g of q.groups)assert(accounts.some(a=>a.vendorId===g.vendorId),`${g.vendorName} has not completed ${input.provider} payment setup.`);
   }
   if(q.coupon){const updated=await query('UPDATE Coupons WITH(UPDLOCK) SET used=used+1 OUTPUT inserted.code WHERE code=@code AND (maxUses IS NULL OR used<maxUses)',{code:q.coupon},tx);assert(updated.length,'That discount code was just fully used.',409);}
@@ -62,7 +64,7 @@ export async function createCheckout(cartId:string,userId:string|null,input:Quot
  if(result.attempt.providerId) return {orderId:result.order.id,accessToken:input.accessToken,...parse(result.attempt.data),provider:input.provider};
  const groups=await query('SELECT vo.id,vo.snapshot,pa.externalId FROM VendorOrders vo LEFT JOIN ProviderAccounts pa ON pa.vendorId=vo.vendorId AND pa.provider=@provider WHERE vo.orderId=@id',{id:result.order.id,provider:input.provider});
  const q=parse(result.order.snapshot);
- try{const checkout=await adapter.createCheckout({id:result.order.id,currency:q.currency,total:q.total,email:input.address.email,accessToken:input.accessToken,groups:groups.map(g=>({id:g.id,total:parse(g.snapshot).total,commission:parse(g.snapshot).commission,account:g.externalId}))});
+ try{const checkout=await adapter.createCheckout({id:result.order.id,currency:q.currency,total:q.total,email:input.address.email,accessToken:input.accessToken,groups:groups.map(g=>({id:g.id,total:parse(g.snapshot).total,commission:parse(g.snapshot).commission,tax:parse(g.snapshot).tax,account:g.externalId}))});
  await query('UPDATE PaymentAttempts SET providerId=@providerId,state=@state,data=@data WHERE id=@id',{id:result.attempt.id,providerId:checkout.id,state:checkout.state,data:checkout});return {orderId:result.order.id,accessToken:input.accessToken,provider:input.provider,...checkout};}
  catch(error){await query("UPDATE PaymentAttempts SET state='uncertain' WHERE id=@id",{id:result.attempt.id});throw error;}
 }
@@ -75,6 +77,10 @@ export async function applyCaptures(orderId:string,providerName:string,captures:
    const existing=await query("SELECT id FROM PaymentTransactions WHERE provider=@provider AND externalId=@external AND kind='capture'",{provider:providerName,external:c.externalId},tx);if(existing.length)continue;
    const groups=await query('SELECT * FROM VendorOrders WITH(UPDLOCK) WHERE orderId=@order AND (@vendorOrder IS NULL OR id=TRY_CONVERT(uniqueidentifier,@vendorOrder))',{order:orderId,vendorOrder:c.vendorOrderId||null},tx);assert(groups.length,'Unknown seller capture.');
    const expected=groups.reduce((s,g)=>s+minor(parse(g.snapshot).total,order.currency),0n);assert(c.currency===order.currency&&minor(c.amount,c.currency)===expected,'Provider amount or currency does not match the order.');
+   if(providerName==='paypal'){
+    assert(c.vendorOrderId&&groups.length===1,'PayPal capture must identify one seller order.',409);
+    verifyPayPalAllocation(c.platformFees,parse(groups[0].snapshot),order.currency);
+   }
    await query("INSERT INTO PaymentTransactions(id,orderId,vendorOrderId,provider,externalId,kind,currency,amount,state,data) VALUES(@id,@order,@vo,@provider,@external,'capture',@currency,@amount,'succeeded',@data)",{id:id(),order:orderId,vo:c.vendorOrderId||null,provider:providerName,external:c.externalId,currency:c.currency,amount:c.amount,data:c},tx);
    for(const g of groups){if(g.paymentState==='paid')continue;
     const reservations=await query('SELECT r.* FROM InventoryReservations r JOIN OrderItems oi ON oi.variantId=r.variantId AND oi.orderId=r.orderId WHERE r.orderId=@order AND oi.vendorOrderId=@vo',{order:orderId,vo:g.id},tx);let needsAttention=false;
@@ -98,7 +104,7 @@ export async function applyCaptures(orderId:string,providerName:string,captures:
    await query('DELETE ci FROM CartItems ci JOIN OrderItems oi ON oi.variantId=ci.variantId WHERE ci.cartId=@cart AND oi.orderId=@order AND ci.quantity=oi.quantity',{cart:order.cartId,order:orderId},tx);
    const accessToken=token();await query("INSERT INTO AccessTokens(id,tokenHash,purpose,email,resourceId,expiresAt) VALUES(@id,@hash,'order_access',@email,@order,DATEADD(day,30,SYSUTCDATETIME()))",{id:id(),hash:hash(accessToken),email:parse(order.address).email,order:orderId},tx);
    await query("INSERT INTO OutboxMessages(id,type,source,data) VALUES(@id,'email',@source,@data)",{id:id(),source:`confirmation:${orderId}`,data:{to:parse(order.address).email,subject:'Your Shopwize order is confirmed',text:`Order ${orderId} is confirmed. Track your order: ${config.origin}/order/${orderId}?access=${accessToken} . Support: ${config.origin}/support`}},tx);
-   if(order.userId&&order.currency===config.currency){const snapshot=parse(order.snapshot);const points=Number((minor(snapshot.subtotal,order.currency)-minor(snapshot.discount,order.currency))/100n);await query('INSERT INTO LoyaltyTransactions(id,userId,orderId,points,source) VALUES(@id,@user,@order,@points,@source)',{id:id(),user:order.userId,order:orderId,points,source:`earn:${orderId}`},tx);}
+   if(order.userId&&order.currency===paymentPolicy().currency){const snapshot=parse(order.snapshot);const points=Number((minor(snapshot.subtotal,order.currency)-minor(snapshot.discount,order.currency))/100n);await query('INSERT INTO LoyaltyTransactions(id,userId,orderId,points,source) VALUES(@id,@user,@order,@points,@source)',{id:id(),user:order.userId,order:orderId,points,source:`earn:${orderId}`},tx);}
    await query("UPDATE ReferralAttributions SET state='qualified' WHERE orderId=@id AND EXISTS(SELECT 1 FROM Users WHERE id=@user AND verified=1)",{id:orderId,user:order.userId||null},tx);
   }
   return state;
