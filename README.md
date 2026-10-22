@@ -1,4 +1,4 @@
-﻿# Shopwize
+# Shopwize
 
 A local multi-vendor marketplace built with Node.js/TypeScript, Express, React, Vite, and **Microsoft SQL Server**. Includes a working storefront, seller and host workspaces, and a transactional multi-vendor checkout.
 
@@ -50,7 +50,7 @@ Integration tests create a fresh `ShopwizeTest_<timestamp>` SQL Server database,
 
 ## SmarterASP.NET hosting
 
-The online hosting provider is **SmarterASP.NET**. The supplied deployment log uses its GitHub deployment with a Linux/Railpack build. Use the SQL-login settings in [.env.production.example](.env.production.example). The native trusted-auth driver is optional; Linux hosting uses the default `mssql` TCP driver with `SQL_TRUSTED_CONNECTION=false`. See the [Railpack error diagnosis and redeployment steps](docs/RAILPACK_FIX.md). Do not copy the Windows development `.env` into the hosted container.
+SmarterASP.NET builds this project with Railpack on Linux, then extracts the files onto **Windows IIS**. Follow the [Windows IIS activation and startup guide](docs/SMARTERASP_IIS.md). The Node.js application startup file is `server.cjs`; GitHub Deploy keeps build `npm run build` and start `npm start`. The build also packages Windows dependencies and a verified Node 24 executable. Configure private SQL-login settings from [.env.production.example](.env.production.example) in the website application pool. Earlier build errors are recorded in [RAILPACK_FIX.md](docs/RAILPACK_FIX.md).
 
 ## Delivery notes
 

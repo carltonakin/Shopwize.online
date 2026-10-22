@@ -1,0 +1,25 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "rootDir": ".",
+    "outDir": "runtime",
+    "noEmit": false,
+    "allowImportingTsExtensions": false,
+    "types": [
+      "node"
+    ]
+  },
+  "include": [
+    "server",
+    "scripts/migrate.ts",
+    "scripts/bootstrap-admin.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "runtime",
+    "web",
+    "tests"
+  ]
+}

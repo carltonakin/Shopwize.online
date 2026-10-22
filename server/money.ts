@@ -1,4 +1,4 @@
-import Decimal from 'decimal.js';
+import {Decimal} from 'decimal.js';
 const D = Decimal.clone({ precision: 32, rounding: Decimal.ROUND_HALF_UP });
 const zeroDecimal = new Set(['JPY', 'KRW', 'VND', 'CLP', 'XAF', 'XOF', 'UGX', 'RWF', 'PYG', 'GNF', 'KMF', 'DJF', 'VUV', 'XPF', 'BIF', 'MGA']);
 const threeDecimal = new Set(['BHD', 'JOD', 'KWD', 'OMR', 'TND']);

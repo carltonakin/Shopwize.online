@@ -5,17 +5,18 @@
   "type": "module",
   "scripts": {
     "dev": "concurrently -k \"tsx watch server/index.ts\" \"vite --host 127.0.0.1\"",
-    "build": "tsc --noEmit && vite build",
+    "build": "tsc --noEmit && tsc -p tsconfig.server.json && vite build",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
-    "start": "tsx server/index.ts",
+    "start": "node server.cjs",
     "db:migrate": "tsx scripts/migrate.ts",
     "db:seed": "tsx scripts/seed.ts",
     "test": "vitest run",
     "test:integration": "tsx scripts/integration-test.ts",
     "worker": "tsx server/worker.ts",
     "admin:bootstrap": "tsx scripts/bootstrap-admin.ts",
-    "test:http": "tsx scripts/http-smoke.ts"
+    "test:http": "tsx scripts/http-smoke.ts",
+    "build:windows-runtime": "node scripts/prepare-windows-runtime.mjs"
   },
   "dependencies": {
     "bcryptjs": "^3.0.2",

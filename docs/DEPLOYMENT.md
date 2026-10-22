@@ -1,18 +1,18 @@
-﻿# Deployment and operations
+# Deployment and operations
 
-## SmarterASP.NET (Linux / Railpack deployment)
+## SmarterASP.NET (Linux build, Windows IIS runtime)
 
-The target hosting provider is **SmarterASP.NET**. For its reported GitHub deployment build failure, use [RAILPACK_FIX.md](RAILPACK_FIX.md) and `.env.production.example`. The repository now includes `railpack.json`; hosted SQL-login connections do not require the optional native ODBC package. Set `SQL_CREATE_DATABASE=false` to migrate an existing provider-assigned database without accessing `master`.
+The target hosting provider is **SmarterASP.NET**. Its successful deployment log confirms that Linux-built files are extracted onto Windows IIS. Follow [SMARTERASP_IIS.md](SMARTERASP_IIS.md) and `.env.production.example`. The repository now includes `railpack.json`; hosted SQL-login connections do not require the optional native ODBC package. Set `SQL_CREATE_DATABASE=false` to migrate an existing provider-assigned database without accessing `master`.
 
 ## Runtime
 
-This is a Node service with SQL Server access, not a static-only site. No deployment was performed. Use a Windows service host for trusted SQL authentication or the `mssql` TCP driver with a restricted SQL login. Node 24 and the lockfile are the tested local baseline. The server runs TypeScript through the production `tsx` dependency.
+This is a Node service with SQL Server access, not a static-only site. Use a Windows service host for trusted SQL authentication or the `mssql` TCP driver with a restricted SQL login. Node 24 and the lockfile are the tested local baseline. The production server runs compiled JavaScript through `server.cjs`; TypeScript tooling is used during build and development.
 
 1. Create a separate production SQL database and backups. Use a deployment identity for migrations and a separate runtime identity for application access.
 2. Install with `npm ci`, configure environment outside source control, then `npm run db:migrate` and `npm run build`. Do **not** seed production.
 3. On an empty production database, supply `BOOTSTRAP_ADMIN_EMAIL`, `BOOTSTRAP_ADMIN_NAME`, and a strong `BOOTSTRAP_ADMIN_PASSWORD` through the service's secure environment; run `npm run admin:bootstrap`. It refuses to run when a host administrator exists. Remove bootstrap credentials immediately afterward.
 4. Set `NODE_ENV=production`, `DEMO_AUTH_ENABLED=false`, `MOCK_PAYMENTS_ENABLED=false`, and HTTPS `PUBLIC_ORIGIN` / `CHECKOUT_ORIGIN`. Configure actual SMTP and provider settings.
-5. Run `npm start` and one `npm run worker` instance as supervised services, with this project as their working directory. For the SmarterASP.NET container deployment, use `HOST=0.0.0.0` and the host-assigned `PORT`. For a separate deployment with a reverse proxy on the same machine, bind Node to loopback. Restart automatically on failure; preserve logs without sensitive request bodies.
+5. Run `npm start` and one `npm run worker` instance as supervised services, with this project as their working directory. For SmarterASP.NET, IIS launches `server.cjs` with the packaged Windows Node executable, loopback binding and its assigned `HTTP_PLATFORM_PORT`; see the IIS guide for the separate compiled worker command. For a separate deployment with a reverse proxy on the same machine, bind Node to loopback. Restart automatically on failure; preserve logs without sensitive request bodies.
 6. Keep `.local/media` on durable storage, back it up and serve it only as static image content. Mail previews are development-only. Deny direct web access to `.local`, `.env`, scripts and database files.
 
 For SQL authentication configure `SQL_TRUSTED_CONNECTION=false`, `SQL_USER`, `SQL_PASSWORD`, `SQL_ENCRYPT=true`, `SQL_TRUST_CERTIFICATE=false`, and a verifiable server certificate. Windows trusted mode uses the service identity, not the interactive developer identity. With Driver 18, update `SQL_ODBC_DRIVER`. Avoid granting the runtime identity schema-modification privileges. Grant application rights on required tables and deny UPDATE/DELETE on `LedgerEntries`; the application only inserts financial history.
