@@ -11,7 +11,7 @@ The previous repository had no IIS startup configuration, and `npm start` used a
 - `web.config` routes every application request through httpPlatformHandler, launches `runtime/node.exe server.cjs`, maps the IIS-assigned port, and retains application HTTP responses. Internal folders and startup logs are blocked from public requests.
 - `server.cjs` fixes the working directory and loads the compiled backend. When IIS supplies `HTTP_PLATFORM_PORT`, it takes precedence over a fixed `PORT`, and the listener binds to loopback.
 - `npm run build` type-checks the project, emits the backend into `runtime/server`, and builds the frontend into `dist`. `npm start` now runs `node server.cjs`.
-- Railpack appends `npm run build:windows-runtime` after its normal build. It keeps the successful package-copy/install setup.
+- Railpack appends `npm run build:windows-runtime` after its normal build. It keeps package-file copies and lockfile installation. Node's bundled npm is used directly; no Corepack download is required.
 - The additional build step installs lockfile-based Windows x64 runtime dependencies into `runtime/node_modules`, including the Windows Sharp binary. Lifecycle scripts are disabled for this cross-platform installation; compiled server startup does not need tsx/esbuild or native ODBC. The Linux build dependencies stay separate.
 - It downloads the official Windows x64 Node executable matching the Node 24 build version and verifies its SHA-256 against that release's official checksum file. The executable lives at `runtime/node.exe`, so IIS does not depend on an older system Node version.
 - The generated runtime directory is excluded from Git and rebuilt by deployment. No SQL password or private environment file is packaged by these scripts.
@@ -28,6 +28,18 @@ The previous repository had no IIS startup configuration, and `npm start` used a
 8. If startup fails, inspect `runtime/startup.log*` privately in File Manager. A 500.19 configuration error means IIS rejected configuration; a 502 startup error needs that runtime log. A continued placeholder or IIS 404 means the active website root/configuration still needs checking.
 
 The hosting database already has migrations 001?005. This startup repair does not require reseeding or another database migration. Hosted checkout remains unverified until the public application is reachable and its catalog/payment/worker configuration is ready.
+
+## Deploy the prebuilt Windows ZIP
+
+An already-built Windows package can be uploaded without using the GitHub/Railpack builder. The prepared local artifact is `test-results/shopwize-windows-iis.zip`. It contains the compiled backend, frontend assets, Windows production dependencies, checksum-verified Node executable, IIS configuration and migration files. It excludes private environment files, uploaded media and Git history.
+
+1. Back up the existing website files/configuration. In the hosting panel stop the website and recycle its application pool if needed to release the running Node executable.
+2. Use **File Manager** to upload the ZIP into the website root and extract it there, overwriting the matching application files. Use File Manager extraction, not the GitHub Deploy page's ZIP build option: the latter runs the build again.
+3. The extracted root must directly contain `server.cjs`, `web.config`, `runtime` and `dist`, without an extra enclosing folder. Leave the site's private environment and `.local/media` in place.
+4. Confirm `web.config` still points to `.\\runtime\\node.exe` with arguments `server.cjs`. Keep the site's existing private application-pool environment variables.
+5. Start the website, recycle its application pool, then verify `https://shopwize.online/api/health` and the storefront. Inspect `runtime/startup.log*` privately if IIS reports 502. Remove the uploaded ZIP from the public website root after extraction; retain a private local copy.
+
+This route does not call npm or download build dependencies on the host. It still requires the site's existing SQL configuration and IIS Node.js support. The ZIP does not run migrations or create accounts.
 
 ## Other deployment modes
 

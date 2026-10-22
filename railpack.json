@@ -8,14 +8,6 @@
           "path": "/app/node_modules/.bin"
         },
         {
-          "dest": "package.json",
-          "src": "package.json"
-        },
-        {
-          "cmd": "sh -c 'npm i -g corepack@latest && corepack enable && corepack prepare --activate'",
-          "customName": "npm i -g corepack@latest && corepack enable && corepack prepare --activate"
-        },
-        {
           "cmd": "mkdir -p /app/node_modules/.cache"
         },
         {
@@ -26,7 +18,7 @@
           "dest": "package.json",
           "src": "package.json"
         },
-        "npm ci --include=dev --include=optional"
+        "npm ci --include=dev --include=optional --prefer-offline"
       ]
     },
     "build": {

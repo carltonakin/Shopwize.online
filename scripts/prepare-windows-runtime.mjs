@@ -17,7 +17,7 @@ for (const file of ['package.json', 'package-lock.json']) {
 if (!process.env.npm_execpath) throw new Error('Run this script with npm run build:windows-runtime.');
 execFileSync(process.execPath, [process.env.npm_execpath, 'ci', '--prefix', target,
   '--omit=dev', '--include=optional', '--ignore-scripts', '--os=win32', '--cpu=x64',
-  '--no-audit', '--no-fund'], {cwd: root, stdio: 'inherit'});
+  '--no-audit', '--no-fund', '--prefer-offline'], {cwd: root, stdio: 'inherit'});
 
 // Fail if npm silently skipped the required Windows image library.
 const sharpLib = path.join(target, 'node_modules/@img/sharp-win32-x64/lib');

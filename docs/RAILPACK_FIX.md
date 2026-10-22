@@ -1,6 +1,16 @@
 # SmarterASP.NET deployment failure: diagnosis and solution
 
-## Current status: build succeeds; Windows IIS startup required
+## Deployment #3900108: npm registry HTTP 503
+
+This attempt failed during Corepack's download of `npm@11.19.0`, before dependency installation or either build step. npm's [incident report](https://status.npmjs.org/incidents/xfp75s9j3bp8) records degraded package installation beginning at 02:33 UTC on October 22, 2026, matching the deployment time. The trailing image-format message is a consequence of the failed build.
+
+The Node 24.21.0 distribution in the log already includes npm 11.19.0. The repair removes `packageManager` from the root manifest and removes the explicit Corepack install/prepare commands. Railpack now uses Node's bundled npm. Removing the manifest field also prevents Railpack from generating a runtime copy of the absent `/opt/corepack` directory. PATH, cache-directory setup, package-file copies, `npm ci`, the application build, Windows packaging, and the explicit Windows runtime export are retained.
+
+Both dependency installations use `--prefer-offline`, allowing npm to reuse cached packages verified against the lockfile. This does not guarantee an online build during a registry outage: uncached application dependencies still require npm's registry. No registry mirror or alternative source has been introduced.
+
+For immediate deployment without a registry build, use the prepared Windows ZIP and the File Manager procedure in [SMARTERASP_IIS.md](SMARTERASP_IIS.md#deploy-the-prebuilt-windows-zip).
+
+## Current status: Windows IIS startup repair awaits successful deployment
 
 Deployment `shopwizeonline_3899436` confirms the install and production build succeeded. The completed log also shows that the container is temporary: its application files are copied to Windows IIS and the container is deleted. Follow [SMARTERASP_IIS.md](SMARTERASP_IIS.md) for the startup repair, Windows dependencies and activation steps. The earlier container-runtime assumption below has been corrected.
 
