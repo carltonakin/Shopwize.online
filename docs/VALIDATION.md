@@ -1,5 +1,17 @@
 ﻿# Validation record
 
+## Payment configuration verification - 2026-10-23
+
+The in-app payment configuration release passed **41 unit tests**, **33 SQL-backed HTTP integration checks**, **6 HTTP smoke checks**, ESLint, and the TypeScript/server/Vite production build. The latest integration report is test-results/integration.json; its isolated database is ShopwizeTest_1792755970571.
+
+Coverage includes encrypted and masked host credentials, role restrictions, stale-edit rejection, settings applied on the next request/worker context, provider and vendor acceptance switches, subscription/history mode safeguards, verified vendor account refresh with cross-store rejection, and the PayPal commission-plus-tax allocation/refund regression scenarios. Provider HTTP responses in these checks are synthetic fixtures, not real sandbox transactions. Test seeding writes only ignored test credentials and does not replace the demo login credentials.
+
+Migration **006** was applied successfully to the local database and the hosted SmarterASP.NET database. It adds payment configuration/preferences tables; existing orders and ledger records are unchanged. Public hosted health and bootstrap endpoints returned HTTP 200. The hosted release still reported Stripe and PayPal unavailable; the new app build still needs redeployment and approved provider credentials.
+
+Browser visual/mobile/keyboard checks remain unverified: both browser and Windows screen-inspection helpers failed to start. Real provider onboarding, checkout, refunds and payouts still require approved sandbox accounts. The API tests and successful build do not substitute for those checks.
+
+## Earlier baseline - 2026-10-21
+
 Executed locally on 2026-10-21 against Node.js 24.21.0 and the available Microsoft SQL Server 2025 Express instance.
 
 | Check | Result |

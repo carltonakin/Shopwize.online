@@ -27,7 +27,7 @@ The previous repository had no IIS startup configuration, and `npm start` used a
 7. Recycle the website's application pool after environment/configuration changes. Open `https://shopwize.online/api/health`: expect HTTP 200 JSON with `ok: true`, `database: "Microsoft SQL Server"`, and `mode: "production"`. Then check the storefront and its JS/CSS.
 8. If startup fails, inspect `runtime/startup.log*` privately in File Manager. A 500.19 configuration error means IIS rejected configuration; a 502 startup error needs that runtime log. A continued placeholder or IIS 404 means the active website root/configuration still needs checking.
 
-The hosting database already has migrations 001?005. This startup repair does not require reseeding or another database migration. Hosted checkout remains unverified until the public application is reachable and its catalog/payment/worker configuration is ready.
+The original startup repair used migrations 001 through 005. The payment configuration release also requires migration 006, which was applied to the hosted database on 2026-10-23. Do not reseed production. Provider checkout and the supervised worker still require their own configuration and verification.
 
 ## Deploy the prebuilt Windows ZIP
 
@@ -35,7 +35,7 @@ An already-built Windows package can be uploaded without using the GitHub/Railpa
 
 1. Back up the existing website files/configuration. In the hosting panel stop the website and recycle its application pool if needed to release the running Node executable.
 2. Use **File Manager** to upload the ZIP into the website root and extract it there, overwriting the matching application files. Use File Manager extraction, not the GitHub Deploy page's ZIP build option: the latter runs the build again.
-3. The extracted root must directly contain `server.cjs`, `web.config`, `runtime` and `dist`, without an extra enclosing folder. Leave the site's private environment and `.local/media` in place.
+3. The extracted root must directly contain `server.cjs`, `web.config`, `runtime` and `dist`, without an extra enclosing folder. Leave the site's private environment and entire `.local` directory in place, including media and `payment-settings.key` when it exists.
 4. Confirm `web.config` still points to `.\\runtime\\node.exe` with arguments `server.cjs`. Keep the site's existing private application-pool environment variables.
 5. Start the website, recycle its application pool, then verify `https://shopwize.online/api/health` and the storefront. Inspect `runtime/startup.log*` privately if IIS reports 502. Remove the uploaded ZIP from the public website root after extraction; retain a private local copy.
 

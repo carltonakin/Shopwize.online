@@ -20,7 +20,7 @@ Updates take effect on the next API request or worker tick, without restarting t
 
 ### Deployment and credential storage
 
-Before deploying this version, run **migration 006** using the existing migration runner against the intended database. It adds PaymentConfiguration and VendorPaymentPreferences without changing order or ledger history. It has been applied locally; the hosted database needs this migration before the new API starts.
+Before deploying this version, run **migration 006** using the existing migration runner against the intended database. It adds PaymentConfiguration and VendorPaymentPreferences without changing order or ledger history. Migration 006 was applied locally and on the hosted SmarterASP.NET database on 2026-10-23. Other installations must apply it before the new API starts.
 
 Credential values are encrypted with AES-256-GCM before SQL storage and are never returned to the browser or audit log. By default, the first credential save creates the private file **.local/payment-settings.key**. Keep the app's .local directory writable by its service identity, denied to web clients, and persistent across deployments. Back up this key securely alongside the database: the database alone cannot restore saved payment credentials. The API and worker must use the same key.
 

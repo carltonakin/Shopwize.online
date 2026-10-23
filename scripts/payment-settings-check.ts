@@ -8,12 +8,13 @@ type Client={call:(path:string,body?:any,method?:string,headers?:Record<string,s
 export async function testPaymentSettings(admin:Client,vendor:Client,otherVendor:Client,guest:Client){
  assert.match(process.env.SQL_DATABASE||'',/^ShopwizeTest_\d+$/);
  const originalControls=await query('SELECT * FROM ProviderSettings');
- const oldFetch=globalThis.fetch;
+ const oldFetch=globalThis.fetch,originalPartner=process.env.PAYPAL_PARTNER_ID;
  const adminId=(await query("SELECT id FROM Users WHERE email='admin@shopwize.test'"))[0].id;
  const vendorId=(await vendor.call('/vendor/dashboard')).data.vendor.id;
  const otherId=(await otherVendor.call('/vendor/dashboard')).data.vendor.id;
  const secret='sk_test_AppConfiguration123',webhook='whsec_configuration_fixture';
  try{
+  process.env.PAYPAL_PARTNER_ID='partner-settings-fixture';
   assert.equal((await guest.call('/admin/payment-settings')).status,401);
   assert.equal((await vendor.call('/admin/payment-settings')).status,403);
   assert.equal((await vendor.call('/admin/payment-settings/stripe',{version:0,values:{}},'PUT')).status,403);
@@ -99,7 +100,7 @@ export async function testPaymentSettings(admin:Client,vendor:Client,otherVendor
   merchantTracking=vendorId;
   result=await vendor.call('/vendor/payment-settings/paypal/refresh',{});assert.equal(result.status,200,JSON.stringify(result.data));assert.equal(result.data.chargesEnabled,true);assert.equal(result.data.payoutsEnabled,true);
   const refreshed=(await vendor.call('/vendor/payment-settings')).data.accounts.find((a:any)=>a.provider==='paypal');assert.equal(refreshed.enabled,false,"Refreshing verification must preserve the owner's acceptance preference");assert.equal(refreshed.connected,true);
-  result=await vendor.call('/vendor/payment-settings/paypal/manage',{});assert.equal(result.status,200);assert.match(result.data.url,/^https://www.sandbox.paypal.com//);
+  result=await vendor.call('/vendor/payment-settings/paypal/manage',{});assert.equal(result.status,200);assert.equal(new URL(result.data.url).origin,'https://www.sandbox.paypal.com');
   assert.equal((await vendor.call('/vendor/payment-settings',{country:'CA'},'PUT')).status,409);
   assert.equal((await vendor.call('/vendor/payment-settings/paypal',{enabled:true},'PUT')).status,200);
 
@@ -110,6 +111,7 @@ export async function testPaymentSettings(admin:Client,vendor:Client,otherVendor
   await query("UPDATE PaymentConfiguration SET secrets=@secrets WHERE scope='stripe'",{secrets:parse(stored.secrets)});
  }finally{
   globalThis.fetch=oldFetch;
+  if(originalPartner===undefined)delete process.env.PAYPAL_PARTNER_ID;else process.env.PAYPAL_PARTNER_ID=originalPartner;
   await query("UPDATE Users SET role='host_admin' WHERE id=@id",{id:adminId});
   await query("UPDATE VendorMembers SET role='owner' WHERE vendorId=@vendor AND userId=(SELECT ownerId FROM Vendors WHERE id=@vendor)",{vendor:vendorId});
   await query('DELETE FROM PaymentConfiguration');await query('DELETE FROM ProviderSettings');
